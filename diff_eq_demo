@@ -1,0 +1,24 @@
+# Template for Diff Eq Solving
+import numpy as np
+from scipy.integrate import solve_ivp
+import matplotlib.pyplot as plt
+
+# Define the differential equation
+def dydt(t, y):
+    return -2 * y
+
+# Initial condition
+y0 = [1]
+
+# Time span
+t_span = (0, 5)
+
+# Solve the ODE
+sol = solve_ivp(dydt, t_span, y0)
+
+# Plot the solution
+plt.plot(sol.t, sol.y[0])
+plt.xlabel('Time')
+plt.ylabel('y')
+plt.title('Solution to the ODE')
+plt.show()
