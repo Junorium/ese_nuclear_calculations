@@ -37,7 +37,7 @@ def plot_3d_clusters(df, k):
     plt.show()
 
 # Parameters
-n = 100  # Num of points
+n = 150  # Num of points
 grid_size = 10  # Grid Size
 k = 4  # Cluster amount
 
