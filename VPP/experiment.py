@@ -43,26 +43,30 @@ class Net(nn.Module): # define model
 ### Synthetic Data
 
 ### Instatiation
-# Instantiate model
+# Instantiate model defined earlier
 model = Net()
 
 # Instatiate loss function
+# Other types of loss functions:
+#
 criterion = nn.CrossEntropyLoss()
 
 # Instantiate optimizer
+# Other types of optimizers
+#
 optimizer = optim.Adam(model.parameters(), lr=0.001)
 
 ### Training
-epochs = 10 # iterations
+epochs = 10 # iterations; number of times to go through dataset
 
 for epoch in range(epochs):
     for inputs, labels in dataloader:
-        optimizer.zero_grad()
+        optimizer.zero_grad() # clears gradient, as acucmulates gradients default
 
-        outputs = model(inputs) # forward pass
-        loss = criterion(outputs, labels)
+        outputs = model(inputs) # forward pass; passes input batch
+        loss = criterion(outputs, labels) # calculate loss between outputs and labels
 
-        loss.backward() # backward pass
-        optimizer.step() # optimization
+        loss.backward() # backward pass; computes gradient of loss
+        optimizer.step() # optimization; updates model parameters using optimizer
 
     print(f"epoch {epoch+1}; loss: {loss.item():.4f}"")
