@@ -7,72 +7,39 @@ from zipfile import ZipFile
 from datetime import datetime, timedelta
 
 class Node:
-    def __init__(self, resource_name):
+    def __init__(self, resource_name, df):
         self.resource_name = resource_name
-        self.daily_data = {}  # Store daily dataframes
+        self.df = df[df['NODE'] == resource_name].copy()  # Filter data for the specific node and create a copy
+
+        # Convert 'INTERVALSTARTTIME_GMT' to datetime objects during Node initialization
+        try:
+            self.df.loc[:, 'INTERVALSTARTTIME_GMT'] = pd.to_datetime(self.df['INTERVALSTARTTIME_GMT'])
+        except Exception as e:
+            print(f"Error converting 'INTERVALSTARTTIME_GMT' to datetime for {self.resource_name}: {e}")
+            self.df['INTERVALSTARTTIME_GMT'] = None  #Or you can set to NaT
+
         self.yearly_average_price = None
-
-    def fetch_caiso_data(self, start_date, end_date):
-        """Fetches CAISO price data for the specified date range."""
-        base_url = 'http://oasis.caiso.com/oasisapi/SingleZip'
-        date_range = pd.date_range(start=start_date, end=end_date)
-
-        for date in date_range:
-            date_str = date.strftime('%Y%m%d')
-            params = {
-                'queryname': 'PRC_LMP',
-                'startdatetime': f'{date_str}T00:00-0000',
-                'enddatetime': f'{date_str}T23:59-0000',
-                'version': '1',
-                'market_run_id': 'DAM',  # Day-Ahead Market
-                'node': self.resource_name,
-                'resultformat': '6'  # CSV format
-            }
-
-            response = requests.get(base_url, params=params)
-            if response.status_code == 200:
-                with ZipFile(BytesIO(response.content)) as zf:
-                    try:
-                        csv_filename = zf.namelist()[0]
-                        with zf.open(csv_filename) as csv_file:
-                            df = pd.read_csv(csv_file)
-                            # Convert Trading Interval to Datetime
-                            df['INTERVALSTARTTIME_GMT'] = pd.to_datetime(df['INTERVALSTARTTIME_GMT'])
-                            df = df.rename(columns={'MW': 'PRICE'})
-                            self.daily_data[date] = df
-                    except Exception as e:
-                        print(f"Error processing CSV for {date}: {e}")
-
-            else:
-                print(f"Error: {response.status_code} for {date}")
 
     def calculate_yearly_average_price(self):
         """Calculates the average price point over the entire year."""
-        all_prices = []
-        for date, df in self.daily_data.items():
-            all_prices.extend(df['PRICE'].tolist())
-
-        if all_prices:
-            self.yearly_average_price = np.mean(all_prices)
+        if not self.df.empty:
+            self.yearly_average_price = self.df['MW'].mean()  # Use 'MW' directly from the DataFrame
+            return self.yearly_average_price
         else:
-            self.yearly_average_price = None
-        return self.yearly_average_price
+            print(f"No data available to calculate yearly average for {self.resource_name}.")
+            return None
 
     def plot_yearly_average_price(self):
-        """Plots the average price over the year (365 points)."""
-        if not self.daily_data:
-            print("No data available to plot yearly average.")
+        """Plots the average price over the year (each data point)."""
+        if self.df.empty or self.df['INTERVALSTARTTIME_GMT'].isnull().all(): #Check if there is any data or if the datetimes are invalid
+            print(f"No valid data available to plot yearly average for {self.resource_name}.")
             return
 
-        # Combine all daily dataframes into one
-        yearly_df = pd.concat(self.daily_data.values(), ignore_index=True)
         # Group by date and calculate the daily average price
-        daily_average = yearly_df.groupby(yearly_df['INTERVALSTARTTIME_GMT'].dt.date)['PRICE'].mean()
+        daily_average = self.df.groupby(self.df['INTERVALSTARTTIME_GMT'].dt.date)['MW'].mean()
 
-        # Convert index to datetime objects
+        # Convert index to datetime objects and sort
         daily_average.index = pd.to_datetime(daily_average.index)
-
-        # Sort the index
         daily_average = daily_average.sort_index()
 
         # Plotting
@@ -86,24 +53,11 @@ class Node:
         plt.tight_layout()
         plt.show()
 
-    def calculate_daily_price_trend(self):
-        """Calculates the average price for each time interval over the year."""
-        # Aggregate data for each timestamp across all days
-        all_data = []
-        for df in self.daily_data.values():
-            all_data.append(df)
-
-        combined_df = pd.concat(all_data, ignore_index=True)
-        # Group data by time and calculate average price
-        combined_df['TIME'] = combined_df['INTERVALSTARTTIME_GMT'].dt.time
-        average_prices = combined_df.groupby('TIME')['PRICE'].mean()
-        return average_prices
-
     def plot_daily_price_trend(self):
         """Plots the daily price trend (each time interval averaged over the year)."""
         average_prices = self.calculate_daily_price_trend()
         if average_prices is None or average_prices.empty:
-            print("No data available to plot daily price trend.")
+            print(f"No data available to plot daily price trend for {self.resource_name}.")
             return
 
         # Convert time objects to strings for plotting
@@ -119,31 +73,62 @@ class Node:
         plt.tight_layout()
         plt.show()
 
-# --- Example Usage ---
+    def calculate_daily_price_trend(self):
+        """Calculates the average price for each time interval over the year."""
+        if self.df.empty or self.df['INTERVALSTARTTIME_GMT'].isnull().all():
+            print(f"No data available to calculate daily price trend for {self.resource_name}.")
+            return None
+
+        # Group data by time and calculate average price
+        self.df['TIME'] = self.df['INTERVALSTARTTIME_GMT'].dt.time
+        average_prices = self.df.groupby('TIME')['MW'].mean()
+        return average_prices
+
+# --- Main Execution Block ---
 if __name__ == "__main__":
-    #Specify the Resource Name:
-    resource_name = 'PALOVRDE_1_N001'  # You can change this
+    base_url = 'http://oasis.caiso.com/oasisapi/SingleZip'
+    params = {
+        'queryname': 'PRC_LMP',
+        'startdatetime': '20250224T00:00-0000', #YYYYMMDD
+        'enddatetime': '20250224T23:59-0000', #YYYYMMDD
+        'version': '1',
+        'market_run_id': 'DAM',  # Day-Ahead Market
+        'node': 'ALL',  # Fetch data for all nodes
+        'resultformat': '6'  # CSV format
+    }
 
-    #Specify the start and end date
-    start_date = '2024-01-01' #YYYY-MM-DD
-    end_date = '2024-01-05' #YYYY-MM-DD
-    #end_date = '2024-12-31'  # One year of data, for demonstration purposes, you can fetch over the year
+    try:
+        response = requests.get(base_url, params=params)
+        response.raise_for_status()  # Raise HTTPError for bad responses (4xx or 5xx)
 
-    # Create a Node object
-    node = Node(resource_name)
-    # Fetch data
-    node.fetch_caiso_data(start_date, end_date)
+        with ZipFile(BytesIO(response.content)) as zf:
+            csv_filename = zf.namelist()[0]
+            with zf.open(csv_filename) as csv_file:
+                df = pd.read_csv(csv_file)
+    except requests.exceptions.RequestException as e:
+        print(f"API Request Error: {e}")
+    except Exception as e:
+        print(f"Error processing data: {e}")
+    else: #The "else" statement executes if there are no exceptions
+        pd.set_option('display.max_columns', None)
+        print(df.head())
 
-    # Check that data was actually loaded
-    if node.daily_data:
-        # Calculate and print the yearly average price
-        yearly_average = node.calculate_yearly_average_price()
-        print(f"Yearly Average Price for {node.resource_name}: {yearly_average}")
+        # Extract unique node names
+        unique_nodes = df['NODE'].unique()
+        print("Unique nodes:", unique_nodes)
 
-        # Plot the yearly average price
-        node.plot_yearly_average_price()
+        # Create a Node object for each resource and perform analysis
+        for resource_name in unique_nodes:
+            print(f"\n--- Analyzing Node: {resource_name} ---")
+            node = Node(resource_name, df)
 
-        # Plot the daily price trend
-        node.plot_daily_price_trend()
-    else:
-        print(f"No data was found for the specified time interval, {start_date} to {end_date}")
+            # Calculate and print the yearly average price
+            yearly_average = node.calculate_yearly_average_price()
+            if yearly_average is not None:
+                print(f"Yearly Average Price for {node.resource_name}: {yearly_average}")
+
+            # Plot the yearly average price
+            node.plot_yearly_average_price()
+
+            # Plot the daily price trend
+            node.plot_daily_price_trend()
