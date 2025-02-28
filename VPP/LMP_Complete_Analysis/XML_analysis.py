@@ -72,49 +72,71 @@ class Node: #Node, as in DER resource
 def parse_xml_data(xml_file):
     tree = ET.parse(xml_file)
     root = tree.getroot()
+
+    # Define the XML namespace
+    ns = {'caiso': 'http://www.caiso.com/soa/OASISReport_v12.xsd'}  # Use the correct namespace URI
+
     nodes = {}
 
-    for report_item in root.findall("REPORT_ITEM"):
-        for report_data in report_item.findall("REPORT_DATA"):
-            resource_name = report_data.find("RESOURCE_NAME").text
-            opr_date = report_data.find("OPR_DATE").text
-            interval_num = report_data.find("INTERVAL_NUM").text
-            interval_start_gmt = report_data.find("INTERVAL_START_GMT").text
-            data_item = report_data.find("DATA_ITEM")
-            value = float(report_data.find("VALUE").text)
+    # Use namespace-aware findall()
+    for report_item in root.findall(".//caiso:REPORT_ITEM", namespaces=ns):  # Double dot
+
+        for report_data in report_item.findall(".//caiso:REPORT_DATA", namespaces=ns):  # Double dot
+            resource_name = report_data.find("caiso:RESOURCE_NAME", namespaces=ns).text
+            opr_date = report_data.find("caiso:OPR_DATE", namespaces=ns).text
+            interval_num = int(report_data.find("caiso:INTERVAL_NUM", namespaces=ns).text)
+            interval_start_gmt = report_data.find("caiso:INTERVAL_START_GMT", namespaces=ns).text
+            interval_end_gmt = report_data.find("caiso:INTERVAL_END_GMT", namespaces=ns).text
+            data_item_element = report_data.find("caiso:DATA_ITEM", namespaces=ns) # find, but don't assume
+            value = float(report_data.find("caiso:VALUE",  namespaces=ns).text)
 
             if resource_name not in nodes:
                 nodes[resource_name] = Node(resource_name)
 
             node = nodes[resource_name]
 
+            # Create the TimePoint object (only once)
             if interval_num not in node.time_points:
-                time_point = TimePoint(interval_num, interval_start_gmt)
+                time_point = TimePoint(interval_num, interval_start_gmt, interval_end_gmt)
                 node.add_time_point(time_point)
             else:
                 time_point = node.time_points[interval_num]
 
-            if data_item == "LMP_PRC":
-                time_point.price = value
-            elif data_item == "LMP_CONG_PRC":
-                time_point.price = value
-            elif data_item == "LMP_ENE_PRC":
-                time_point.congestion = value
-            elif data_item == "LMP_LOSS_PRC":
-                time_point.loss = value
+            # Assign to relevant
+            if data_item_element is not None:
+                data_item = data_item_element.text  # Safely get the text
+                if data_item == "LMP_PRC":
+                    time_point.price = value
+                elif data_item == "LMP_CONG_PRC":
+                    time_point.congestion = value
+                elif data_item == "LMP_ENE_PRC":
+                    time_point.emission = value
+                elif data_item == "LMP_LOSS_PRC":
+                    time_point.loss = value
 
     return nodes
 
 ### Instantiate file
-
 xml_file = "JanFeb.xml"
 nodes = parse_xml_data(xml_file)
+node_list = list(nodes.keys())
 
-for resource_name, node in nodes.items():
-    print(f"Node: {node.resource_name}")
-    for interval_num, time_point in node.time_points.items():
-        print(f"Interval {interval_num}: {time_point}")
 
-if nodes:
-    first_node_name = next(iter(nodes))
-    nodes[first_node_name].plot_parameter("LMP_PRC")
+# Debugging:
+print(f"Number of nodes created: {len(nodes)}")
+print("List of all nodes:", node_list)
+
+#Example
+if 'AFPR_1_TOT_GEN-APND' in nodes:
+    print("Node AFPR_1_TOT_GEN-APND exists!")
+    node = nodes['AFPR_1_TOT_GEN-APND']
+    print(f"Number of time points in this node: {len(node.time_points)}")
+    if node.time_points: # Check if there are any timepoints
+        first_interval = next(iter(node.time_points)) #Get the first interval
+        print(f"Data in first interval: {node.time_points[first_interval]}") #print out all the datapoints
+else:
+    print("Node AFPR_1_TOT_GEN-APND does not exist.")
+
+for node_name, node in nodes.items():
+    print(f"Plotting price for node: {node_name}") #See if the loop is reached
+    node.plot_parameter("loss")  # Or 'congestion', 'emission', 'loss'
