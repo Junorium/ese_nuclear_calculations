@@ -139,4 +139,4 @@ else:
 
 for node_name, node in nodes.items():
     print(f"Plotting price for node: {node_name}") #See if the loop is reached
-    node.plot_parameter("loss")  # Or 'congestion', 'emission', 'loss'
+    node.plot_parameter("price")  # Or 'congestion', 'emission', 'loss'

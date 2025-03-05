@@ -24,3 +24,7 @@ plt.ylabel('Energy demand')
 plt.title("Energy Demand for 2/20/2025")
 
 plt.show()
+
+# daily average, over the year, for each node
+# min, max price, for each node
+# have this for the year

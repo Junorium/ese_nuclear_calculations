@@ -24,7 +24,7 @@ if __name__ == "__main__":
     base_url = 'http://oasis.caiso.com/oasisapi/SingleZip'
     params = {
         'queryname': 'PRC_LMP',
-        'startdatetime': '20250224T00:00-0000',  #YYYYMMDD
+        'startdatetime': '20240224T00:00-0000',  #YYYYMMDD
         'enddatetime': '20250224T23:59-0000',  #YYYYMMDD
         'version': '1',
         'market_run_id': 'DAM',  # Day-Ahead Market
